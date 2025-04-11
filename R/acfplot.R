@@ -54,12 +54,12 @@ acfplot <- function(data, vars, lag.max = 20, title = "Autocorrelation Function"
 
   # Build the bar graph.
   p <- ggplot2::ggplot(acf_df, ggplot2::aes(x = lag, y = acf)) +
-    ggplot2::geom_col(fill = "navy", width = 0.8) +  # Bars for ACF values.
+    ggplot2::geom_col(fill = "navy", width = 0.1) +  # Bars for ACF values.
     ggplot2::geom_hline(yintercept = 0, color = "black", linetype = "dashed", size = 1) +
     ggplot2::geom_hline(data = crit_df, mapping = ggplot2::aes(yintercept = crit),
-                        linetype = "dotted", color = "red", size = 1) +
+                        linetype = "dashed", color = "red", size = 1) +
     ggplot2::geom_hline(data = crit_df, mapping = ggplot2::aes(yintercept = -crit),
-                        linetype = "dotted", color = "red", size = 1) +
+                        linetype = "dashed", color = "red", size = 1) +
     ggplot2::labs(title = title, x = "Lag", y = "ACF") +
     ggplot2::facet_wrap(~ variable, scales = "free_y") +
     ggthemes::theme_stata(base_size = 12)
