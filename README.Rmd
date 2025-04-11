@@ -107,10 +107,8 @@ print(pacf_plot)
 
 ```r 
 # Assume monthly_ts has time series objects in the columns 'sales' and 'profit'
-results <- urtest(
-  data = monthly_ts,
-  varnames = c("sales", "profit")
-)
+my_results <- urtest(monthly_ts, c("sales", "profit", )) 
+
 print(results)
 ```
 
