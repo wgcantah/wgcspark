@@ -30,10 +30,7 @@
 #' )
 #'
 #' # Run the unit root tests on the selected variables.
-#' results_multi <- urtest(
-#'   data     = monthly,
-#'   varnames = c("CPI", "EXC_END", "DEPRECIATION")
-#' )
+#' my_results <- urtest(my_ts_df, c("CPI", "EXRATE", "REVENUE")) 
 #'
 #' # Print the combined results.
 #' print(results_multi)
@@ -41,111 +38,83 @@
 #'
 #' @export
 urtest <- function(data, varnames) {
-  # Check that varnames is a character vector.
-  if (!is.character(varnames)) {
+  #--------------------------- 1.  Input checks ---------------------------#
+  if (!is.character(varnames))
     stop("'varnames' must be a character vector of column names.")
-  }
 
-  # Verify that the provided variables exist in data.
   missing_vars <- setdiff(varnames, names(data))
-  if (length(missing_vars) > 0) {
-    stop("These columns are not found in data: ", paste(missing_vars, collapse = ", "))
-  }
+  if (length(missing_vars))
+    stop("These columns are not found in data: ",
+         paste(missing_vars, collapse = ", "))
 
-  # Check if required packages are installed
-  required_pkgs <- c("tseries", "urca", "officer", "flextable")
-  for(pkg in required_pkgs) {
+  # Required packages (only those truly needed now)
+  required_pkgs <- c("tseries", "urca")
+  for (pkg in required_pkgs) {
     if (!requireNamespace(pkg, quietly = TRUE))
       stop(sprintf("Package '%s' is required but not installed.", pkg))
   }
 
-  # Create a new Word document using officer::read_docx.
-  doc <- officer::read_docx()
-  doc <- officer::body_add_par(doc, "Unit Root Test Results (Multiple Variables)", style = "heading 1")
+  #--------------------------- 2.  Loop over vars -------------------------#
+  results_list <- list()
 
-  # Overall list for storing results for each variable.
-  all_results_list <- list()
-
-  # Iterate over each requested time-series variable.
   for (varname in varnames) {
+
     ts_data <- data[[varname]]
 
-    # Check that the selected variable is a time-series object.
     if (!inherits(ts_data, "ts")) {
-      warning(sprintf("'%s' is not a ts object. Skipping this variable.", varname))
+      warning(sprintf("'%s' is not a ts object. Skipping.", varname))
       next
     }
 
-    #### 1. ADF Test using urca::ur.df with type = "drift"
-    # For type = "drift", the relevant statistic is "tau2".
-    adf_ur <- urca::ur.df(ts_data, type = "drift", selectlags = "AIC")
-    adf_stat <- adf_ur@teststat["tau2"]
-    adf_cvals_vec <- adf_ur@cval["tau2", ]
-    adf_1pct <- round(adf_cvals_vec["1pct"], 3)
-    adf_5pct <- round(adf_cvals_vec["5pct"], 3)
-    adf_10pct <- round(adf_cvals_vec["10pct"], 3)
-    # Use tseries::adf.test to obtain a p-value.
-    adf_tseries <- tseries::adf.test(ts_data)
-    adf_pval <- adf_tseries$p.value
+    ##--- 2.1  ADF --------------------------------------------------------##
+    adf_ur      <- urca::ur.df(ts_data, type = "drift", selectlags = "AIC")
+    adf_stat    <- adf_ur@teststat["tau2"]
+    adf_cvals   <- adf_ur@cval["tau2", ]
+    adf_pval    <- tseries::adf.test(ts_data)$p.value
 
-    #### 2. KPSS Test using tseries::kpss.test
-    kpss_test <- tseries::kpss.test(ts_data)
-    kpss_stat <- as.numeric(kpss_test$statistic)
-    kpss_pval <- kpss_test$p.value
-    # Set default critical values for KPSS (for level test); these are typical defaults.
-    kpss_cvals <- c("1pct" = 0.739, "5pct" = 0.463, "10pct" = 0.347)
-    kpss_1pct <- kpss_cvals["1pct"]
-    kpss_5pct <- kpss_cvals["5pct"]
-    kpss_10pct <- kpss_cvals["10pct"]
+    ##--- 2.2  KPSS -------------------------------------------------------##
+    kpss_test   <- tseries::kpss.test(ts_data)
+    kpss_stat   <- kpss_test$statistic
+    kpss_pval   <- kpss_test$p.value
+    kpss_cvals  <- c("1pct" = 0.739, "5pct" = 0.463, "10pct" = 0.347)
 
-    #### 3. Phillips–Perron (PP) Test using urca::ur.pp
-    pp_test <- urca::ur.pp(ts_data, type = "Z-tau", model = "constant", lags = "short")
-    pp_stat <- pp_test@teststat
-    pp_pval <- NA  # p-value is not directly provided.
-    pp_cvals_vec <- pp_test@cval
-    pp_1pct <- round(pp_cvals_vec["1pct"], 3)
-    pp_5pct <- round(pp_cvals_vec["5pct"], 3)
-    pp_10pct <- round(pp_cvals_vec["10pct"], 3)
+    ##--- 2.3  Phillips–Perron -------------------------------------------##
+    pp_test     <- urca::ur.pp(ts_data, type = "Z-tau",
+                               model = "constant", lags = "short")
+    pp_stat     <- pp_test@teststat
+    pp_cvals    <- pp_test@cval
+    pp_pval     <- NA   # not returned by ur.pp
 
-    #### 4. NG–Perron Test using urca::ur.ers
-    ng_test <- urca::ur.ers(ts_data, model = "trend", lag.max = 4)
-    # Use the first test statistic as representative.
-    ng_stat <- ng_test@teststat[1]
-    ng_pval <- NA  # p-value not provided.
-    ng_cvals_vec <- ng_test@cval[1, ]
-    ng_1pct <- round(ng_cvals_vec["1pct"], 3)
-    ng_5pct <- round(ng_cvals_vec["5pct"], 3)
-    ng_10pct <- round(ng_cvals_vec["10pct"], 3)
+    ##--- 2.4  NG–Perron --------------------------------------------------##
+    ng_test     <- urca::ur.ers(ts_data, model = "trend", lag.max = 4)
+    ng_stat     <- ng_test@teststat[1]
+    ng_cvals    <- ng_test@cval[1, ]
+    ng_pval     <- NA   # not returned by ur.ers
 
-    # Create a summary data frame for these results.
+    ##--- 2.5  Assemble ---------------------------------------------------##
     results_df <- data.frame(
-      Variable   = rep(varname, 4),
+      Variable   = varname,
       Test       = c("ADF", "KPSS", "Phillips–Perron", "NG–Perron"),
       Statistic  = c(adf_stat, kpss_stat, pp_stat, ng_stat),
       P_Value    = c(adf_pval, kpss_pval, pp_pval, ng_pval),
-      Crit_1pct  = c(adf_1pct, kpss_1pct, pp_1pct, ng_1pct),
-      Crit_5pct  = c(adf_5pct, kpss_5pct, pp_5pct, ng_5pct),
-      Crit_10pct = c(adf_10pct, kpss_10pct, pp_10pct, ng_10pct),
+      Crit_1pct  = c(adf_cvals["1pct"], kpss_cvals["1pct"],
+                     pp_cvals["1pct"],  ng_cvals["1pct"]),
+      Crit_5pct  = c(adf_cvals["5pct"], kpss_cvals["5pct"],
+                     pp_cvals["5pct"],  ng_cvals["5pct"]),
+      Crit_10pct = c(adf_cvals["10pct"], kpss_cvals["10pct"],
+                     pp_cvals["10pct"], ng_cvals["10pct"]),
       stringsAsFactors = FALSE
     )
 
-    # Print results for this variable to the console.
-    cat("\nResults for variable:", varname, "\n")
-    print(results_df)
-
-    # Append the results to the overall list.
-    all_results_list[[varname]] <- results_df
-
-    # Add a section in the Word document for this variable.
-    doc <- officer::body_add_par(doc, paste("Results for:", varname), style = "heading 2")
-    ft <- flextable::flextable(results_df)
-    doc <- officer::body_add_flextable(doc, ft)
+    results_list[[varname]] <- results_df
   }
 
-  # Save the combined results into one Word document.
-  officer::print(doc, target = "UnitRootTestResults_Multiple.docx")
+  #--------------------------- 3.  Return ---------------------------------#
+  combined_results <- do.call(rbind, results_list)
 
-  # Combine individual results into one data frame for returning.
-  combined_results <- do.call(rbind, all_results_list)
+  # Show in console for immediate feedback (optional)
+  print(combined_results)
+
   invisible(combined_results)
 }
+
